@@ -34,9 +34,9 @@ class TenderConfig(BaseModel):
     
     max_results: int = Field(
         default=100,
-        ge=10,
+        ge=0,
         le=500,
-        description="每个关键词最大结果数"
+        description="每个关键词最大结果数，0表示获取所有结果"
     )
     
     output_file: str = Field(

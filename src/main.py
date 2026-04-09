@@ -61,7 +61,13 @@ def setup_argument_parser() -> argparse.ArgumentParser:
         "--max-results",
         type=int,
         default=100,
-        help="每个关键词最大结果数 (默认: 100)"
+        help="每个关键词最大结果数，0表示获取所有结果 (默认: 100)"
+    )
+    
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="获取所有结果（相当于 --max-results 0）"
     )
     
     return parser
@@ -76,6 +82,10 @@ def main():
     if args.output is None:
         today = datetime.now().strftime("%Y%m%d")
         args.output = f"medical_tenders_{today}.xlsx"
+    
+    # 如果指定了--all，设置max_results为0
+    if args.all:
+        args.max_results = 0
     
     # 创建配置
     config = TenderConfig(
@@ -93,7 +103,10 @@ def main():
         print(f"  关键词: {', '.join(config.keywords)}")
         print(f"  时间范围: 最近 {config.days_back} 天")
         print(f"  输出文件: {config.output_file}")
-        print(f"  最大结果数: {config.max_results}")
+        if config.max_results == 0:
+            print(f"  最大结果数: 全部")
+        else:
+            print(f"  最大结果数: {config.max_results}")
         print()
     
     # 延迟导入，避免循环导入

@@ -183,15 +183,23 @@ class CCGPFetcher:
         soup = BeautifulSoup(html, "html.parser")
         
         # 查找分页信息 - 在包含 "共找到 X 条内容" 的段落中
-        page_info = soup.find("p", string=re.compile(r'共找到\s*\d+\s*条内容'))
+        # 注意：网站实际文本可能没有空格，如"共找到74条内容"
+        page_info = soup.find("p", string=re.compile(r'共找到\s*\d+\s*条'))
         if page_info:
             text = page_info.get_text()
-            # 提取总条数
-            total_match = re.search(r'共找到\s*(\d+)\s*条内容', text)
+            # 提取总条数 - 支持多种格式："共找到 74 条内容" 或 "共找到74条内容"
+            total_match = re.search(r'共找到\s*(\d+)\s*条', text)
             if total_match:
                 total_items = int(total_match.group(1))
                 # 每页20条
                 return (total_items + 19) // 20
+        
+        # 备用方案：直接从文本中搜索
+        text = soup.get_text()
+        total_match = re.search(r'共找到\s*(\d+)\s*条', text)
+        if total_match:
+            total_items = int(total_match.group(1))
+            return (total_items + 19) // 20
         
         # 查找页码链接
         page_links = soup.find_all("a", class_=lambda x: x and "page" in str(x).lower())
@@ -210,65 +218,118 @@ class CCGPFetcher:
         return 1
     
     def search(self, keyword: str, max_results: Optional[int] = None) -> List[TenderInfo]:
-        """搜索单个关键词的招标信息."""
+        """搜索单个关键词的招标信息.
+        
+        Args:
+            keyword: 搜索关键词
+            max_results: 最大结果数，None或0表示获取所有结果
+            
+        Returns:
+            List[TenderInfo]: 招标信息列表
+        """
         if max_results is None:
             max_results = self.config.max_results
-            
-        print(f"搜索关键词: {keyword}")
+        
+        # max_results为0表示获取所有结果
+        fetch_all = max_results == 0
+        if fetch_all:
+            print(f"搜索关键词: {keyword} (获取所有结果)")
+        else:
+            print(f"搜索关键词: {keyword} (最多 {max_results} 条)")
         
         http_client = self._get_http_client()
         
         all_results = []
         page = 1
+        total_pages = None
+        max_retries = 3  # 每页最大重试次数
         
-        while len(all_results) < max_results:
+        while True:
+            # 检查是否已达到最大结果数
+            if not fetch_all and len(all_results) >= max_results:
+                break
+            
             url = self.build_search_url(keyword, page)
             print(f"  获取第 {page} 页...")
             
-            try:
-                html = http_client.get_text(url)
-                results = self.parse_list_page(html)
+            # 重试机制
+            retry_count = 0
+            page_success = False
+            last_error = None
+            
+            while retry_count < max_retries and not page_success:
+                if retry_count > 0:
+                    wait_time = 2 * retry_count  # 递增等待时间
+                    print(f"    第 {retry_count} 次重试，等待 {wait_time} 秒...")
+                    time.sleep(wait_time)
                 
-                if not results:
-                    print(f"  第 {page} 页无数据，结束搜索")
-                    break
-                
-                # 去重并添加关键词，同时获取详情页信息
-                for result in results:
-                    if result.url not in self._seen_urls:
-                        self._seen_urls.add(result.url)
-                        result.keyword = keyword
-                        
-                        # 获取详情页信息
-                        try:
-                            self._fetch_detail_info(result)
-                        except Exception as e:
-                            # 详情页获取失败不影响主流程
-                            pass
-                        
-                        all_results.append(result)
-                        
-                        if len(all_results) >= max_results:
-                            break
-                
-                print(f"  找到 {len(results)} 条，累计 {len(all_results)} 条")
-                
-                # 检查是否还有下一页
-                total_pages = self.get_total_pages(html)
-                if page >= total_pages:
-                    break
+                try:
+                    html = http_client.get_text(url)
+                    results = self.parse_list_page(html)
                     
+                    if not results:
+                        print(f"  第 {page} 页无数据，结束搜索")
+                        page_success = True
+                        break
+                    
+                    # 去重并添加关键词，同时获取详情页信息
+                    for result in results:
+                        if result.url not in self._seen_urls:
+                            self._seen_urls.add(result.url)
+                            result.keyword = keyword
+                            
+                            # 获取详情页信息
+                            try:
+                                self._fetch_detail_info(result)
+                            except Exception as e:
+                                # 详情页获取失败不影响主流程
+                                pass
+                            
+                            all_results.append(result)
+                            
+                            # 检查是否已达到最大结果数
+                            if not fetch_all and len(all_results) >= max_results:
+                                break
+                    
+                    print(f"  找到 {len(results)} 条，累计 {len(all_results)} 条")
+                    
+                    # 获取总页数（只在第一页时获取）
+                    if total_pages is None:
+                        total_pages = self.get_total_pages(html)
+                        if fetch_all:
+                            print(f"  共 {total_pages} 页，约 {total_pages * 20} 条结果")
+                    
+                    page_success = True
+                    
+                except Exception as e:
+                    last_error = e
+                    retry_count += 1
+                    print(f"    获取第 {page} 页失败: {e}")
+            
+            if not page_success:
+                print(f"  获取第 {page} 页失败，已重试 {max_retries} 次，跳过该页")
+                # 如果是第一页就失败，直接返回空结果
+                if page == 1:
+                    break
+                # 否则尝试下一页
                 page += 1
-                
-                # 请求频率控制
-                time.sleep(1.5)
-                
-            except Exception as e:
-                print(f"  获取第 {page} 页失败: {e}")
+                time.sleep(3)
+                continue
+            
+            # 检查是否还有下一页
+            if total_pages and page >= total_pages:
+                print(f"  已到达最后一页 ({total_pages})")
                 break
+            
+            page += 1
+            
+            # 请求频率控制
+            time.sleep(1.5)
         
         print(f"关键词 '{keyword}' 共找到 {len(all_results)} 条招标信息")
-        return all_results[:max_results]
+        if not fetch_all:
+            return all_results[:max_results]
+        return all_results
     
     def _fetch_detail_info(self, tender: TenderInfo):
         """从详情页获取完整信息（联系人和标的物）."""
