@@ -163,16 +163,10 @@ def main():
         
         # 导出到Excel
         exporter = ExcelExporter()
-        
-        # 转换结果为列表
-        all_tenders = []
-        for keyword, tenders in results.items():
-            all_tenders.extend(tenders)
-        
-        output_path = exporter.export(all_tenders, config.output_file)
+        output_path = exporter.export(results, config.output_file)
         
         print(f"\n结果已保存到: {output_path}")
-        print(f"共 {len(all_tenders)} 条记录")
+        print(f"共 {total_count} 条记录")
         
     except Exception as e:
         print(f"\n错误: {e}")

@@ -127,6 +127,8 @@ class GGZYFetcherPlaywright:
     def _search_keyword(self, keyword: str) -> str:
         """在网站上搜索关键词并返回页面HTML.
         
+        使用直接URL访问，避免复杂的页面交互。
+        
         Args:
             keyword: 搜索关键词
             
@@ -135,31 +137,22 @@ class GGZYFetcherPlaywright:
         """
         self._init_browser()
         
-        print(f"  打开搜索页面...")
-        self._page.goto(self.SEARCH_URL, wait_until="networkidle")
+        # 直接构建搜索URL
+        search_url = f"{self.SEARCH_URL}?keyword={keyword}"
+        print(f"  访问搜索URL: {search_url}")
         
-        # 等待页面加载
-        time.sleep(2)
+        self._page.goto(search_url, wait_until="networkidle")
         
-        # 输入关键词
-        print(f"  输入关键词: {keyword}")
-        search_input = self._page.locator('input[placeholder*="关键字"], input[type="text"]').first
-        search_input.fill(keyword)
-        
-        # 点击搜索按钮
-        print(f"  点击搜索...")
-        search_button = self._page.locator('button:has-text("搜索"), input[value="搜索"]').first
-        search_button.click()
-        
-        # 等待结果加载
-        print(f"  等待结果加载...")
-        time.sleep(3)
+        # 等待页面加载和JavaScript执行
+        print(f"  等待页面加载...")
+        time.sleep(5)
         
         # 等待结果出现
         try:
-            self._page.wait_for_selector('h4', timeout=10000)
+            self._page.wait_for_selector('h4', timeout=15000)
+            print(f"  结果已加载")
         except:
-            pass
+            print(f"  等待结果超时，继续处理")
         
         # 获取页面HTML
         html = self._page.content()
@@ -195,45 +188,52 @@ class GGZYFetcherPlaywright:
         results = []
         soup = BeautifulSoup(html, "html.parser")
         
-        # 查找所有招标条目 - 每个条目是一个h4标题
-        headings = soup.find_all('h4', level='4')
+        # 查找所有结果容器
+        result_divs = soup.find_all('div', class_='publicont')
         
-        for heading in headings:
+        for div in result_divs:
             try:
+                # 获取h4标签
+                h4 = div.find('h4')
+                if not h4:
+                    continue
+                
                 # 获取标题链接
-                link = heading.find('a')
+                link = h4.find('a')
                 if not link:
                     continue
                 
-                title = link.get_text(strip=True)
+                # 从title属性获取完整标题（避免span拆分）
+                title = link.get('title', '').strip()
+                if not title:
+                    # 如果title属性为空，尝试获取文本
+                    title = link.get_text(strip=True)
+                
                 href = link.get('href', '')
                 
-                # 获取日期（heading后面的文本）
-                date_text = ""
-                heading_text = heading.get_text(strip=True)
-                date_match = re.search(r'(\d{4}-\d{2}-\d{2})', heading_text)
-                if date_match:
-                    date_text = date_match.group(1)
+                # 获取日期
+                date_span = h4.find('span', class_='span_o')
+                date_text = date_span.get_text(strip=True) if date_span else ""
                 
-                # 获取详细信息
-                info_para = heading.find_next('p')
+                # 获取详细信息段落
+                info_para = div.find('p', class_='p_tw')
                 province = ""
                 platform = ""  # 作为代理机构
                 notice_type = ""  # 信息类型映射到公告类型
                 
                 if info_para:
-                    info_text = info_para.get_text(strip=True)
+                    # 提取省份
+                    province_span = info_para.find('span', class_='span_on')
+                    if province_span:
+                        province = province_span.get_text(strip=True)
                     
-                    province_match = re.search(r'省份：([^来源]+)', info_text)
-                    if province_match:
-                        province = province_match.group(1).strip()
-                    
-                    platform_match = re.search(r'来源平台：([^业务]+)', info_text)
+                    # 提取来源平台（代理机构）
+                    platform_match = re.search(r'来源平台[：:]\s*([^业务]+)', info_para.get_text())
                     if platform_match:
                         platform = platform_match.group(1).strip()
                     
-                    # 信息类型映射到公告类型
-                    info_type_match = re.search(r'信息类型：([^行业]+)', info_text)
+                    # 提取信息类型（公告类型）
+                    info_type_match = re.search(r'信息类型[：:]\s*([^行业]+)', info_para.get_text())
                     if info_type_match:
                         notice_type = info_type_match.group(1).strip()
                 
