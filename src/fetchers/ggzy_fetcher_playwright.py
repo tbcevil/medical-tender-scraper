@@ -280,12 +280,13 @@ class GGZYFetcherPlaywright:
                     url = href
                 
                 # 创建TenderInfo，映射到13个标准字段
+                # 注意：代理机构需要从详情页提取，列表页只有"来源平台"
                 tender = TenderInfo(
                     title=title,
                     url=url,
                     publish_date=date_text,
                     province=province,
-                    agency=platform,  # 来源平台作为代理机构
+                    agency="",  # 代理机构从详情页提取
                     notice_type=notice_type,  # 信息类型作为公告类型
                     # 其他字段需要从详情页获取或保持为空
                 )
@@ -311,13 +312,15 @@ class GGZYFetcherPlaywright:
             soup = BeautifulSoup(html, "html.parser")
             full_text = soup.get_text()
             
-            # 提取采购单位（采购人）
+            # 提取采购单位（采购人）- 支持多种格式
             if not tender.purchaser:
                 patterns = [
+                    r'采购人信息[：:]\s*\n?\s*名称[：:]\s*([^\n]+?)(?:\n|$)',
                     r'采购人[：:]\s*([^\n]+?)(?:\n|$)',
                     r'采购单位[：:]\s*([^\n]+?)(?:\n|$)',
                     r'招标人[：:]\s*([^\n]+?)(?:\n|$)',
                     r'招标单位[：:]\s*([^\n]+?)(?:\n|$)',
+                    r'名称[：:]\s*([^\n]+?)(?:\n|地址|$)',  # 企业招标格式
                 ]
                 for pattern in patterns:
                     match = re.search(pattern, full_text)
@@ -341,6 +344,38 @@ class GGZYFetcherPlaywright:
                             tender.budget = budget
                             break
             
+            # 提取代理机构（从详情页）
+            if not tender.agency:
+                patterns = [
+                    r'代理机构[：:]\s*([^\n]+?)(?:\n|$)',
+                    r'招标代理[：:]\s*([^\n]+?)(?:\n|$)',
+                    r'采购代理[：:]\s*([^\n]+?)(?:\n|$)',
+                    r'代理单位[：:]\s*([^\n]+?)(?:\n|$)',
+                ]
+                for pattern in patterns:
+                    match = re.search(pattern, full_text)
+                    if match:
+                        agency = match.group(1).strip()
+                        # 过滤掉过短或过长的内容
+                        if agency and len(agency) >= 5 and len(agency) <= 100:
+                            tender.agency = agency
+                            break
+            
+            # 提取联系地址（从采购人地址）
+            if not tender.contact_address:
+                patterns = [
+                    r'采购人信息[\s\S]*?地址[：:]\s*([^\n]+?)(?:\n|联系|$)',
+                    r'地址[：:]\s*([^\n]{10,80}?)(?:\n|联系|电话|$)',
+                ]
+                for pattern in patterns:
+                    match = re.search(pattern, full_text)
+                    if match:
+                        address = match.group(1).strip()
+                        # 过滤掉网站备案地址
+                        if address and not any(x in address for x in ['京ICP', '京公网安备', '国家信息中心', '网站标识码']):
+                            tender.contact_address = address
+                            break
+            
             # 提取联系人信息
             self._extract_contact_info(tender, soup, full_text)
             
@@ -361,9 +396,10 @@ class GGZYFetcherPlaywright:
             else:
                 content_text = full_text
             
-            # 提取联系人姓名 - 更宽松的模式
+            # 提取联系人姓名 - 支持企业招标格式
             if not tender.contact_name:
                 patterns = [
+                    r'采购人信息[\s\S]*?联系人[：:]\s*([^\n]{1,10}?)(?:\n|电话|$)',
                     r'项目联系人[：:\s]+([^\n]{2,20}?)(?:\n|电话|手机|$)',
                     r'联系人[：:\s]+([^\n]{2,20}?)(?:\n|电话|手机|$)',
                     r'联系人员[：:\s]+([^\n]{2,20}?)(?:\n|电话|手机|$)',
@@ -374,35 +410,44 @@ class GGZYFetcherPlaywright:
                     if match:
                         name = match.group(1).strip()
                         # 过滤掉明显不是人名的内容
-                        if name and len(name) >= 2 and len(name) <= 20 and not any(x in name for x in ['联系', '电话', '地址', '招标', '投标']):
+                        if name and len(name) >= 1 and len(name) <= 20 and not any(x in name for x in ['联系', '电话', '地址', '招标', '投标', '信息']):
                             tender.contact_name = name
                             break
             
-            # 提取电话 - 支持更多格式
+            # 提取电话 - 支持更多格式和企业招标格式
             if not tender.contact_phone:
                 patterns = [
-                    r'项目联系人电话[：:\s]+([\d\-\s]+)',
-                    r'电\s*话[：:\s]+([\d\-\s]+)',
-                    r'联系方式[：:\s]+([\d\-\s]+)',
-                    r'联\s*系\s*电\s*话[：:\s]*([\d\-\s]+)',
-                    r'手机[：:\s]+([\d\-\s]+)',
-                    r'(1[3-9]\d{9})',  # 手机号
-                    r'(\d{3,4}-\d{7,8})',  # 固话
+                    (r'采购人信息[\s\S]*?联系电话[：:]\s*([\d\-]+)', 'contact_section'),
+                    (r'项目联系人电话[：:\s]+([\d\-\s]+)', 'contact_section'),
+                    (r'联\s*系\s*电\s*话[：:\s]*([\d\-\s]+)', 'contact_section'),
+                    (r'电\s*话[：:\s]+([\d\-\s]+)', 'general'),
+                    (r'联系方式[：:\s]+([\d\-\s]+)', 'general'),
+                    (r'手机[：:\s]+([\d\-\s]+)', 'general'),
                 ]
-                for pattern in patterns:
+                for pattern, pattern_type in patterns:
                     match = re.search(pattern, content_text)
                     if match:
                         phone = match.group(1).strip().replace(' ', '').replace('-', '')
-                        # 验证电话号码格式
-                        if len(phone) >= 7 and len(phone) <= 20:
-                            # 格式化为标准格式
-                            if len(phone) == 11 and phone.startswith('1'):
-                                # 手机号
+                        # 严格验证电话号码格式
+                        if len(phone) >= 7 and len(phone) <= 15:
+                            # 验证是否为有效电话号码
+                            # 手机号：11位，1开头
+                            # 固话：7-8位，前面可能有区号
+                            is_valid = False
+                            if len(phone) == 11 and phone.startswith('1') and phone[1] in '3456789':
+                                is_valid = True
+                            elif len(phone) >= 7 and len(phone) <= 12 and phone[0] in '0123456789':
+                                # 可能是固话，检查是否全为数字
+                                if phone.isdigit():
+                                    is_valid = True
+                            
+                            # 排除项目编号（通常很长或包含特定模式）
+                            if len(phone) > 12:
+                                is_valid = False
+                            
+                            if is_valid:
                                 tender.contact_phone = phone
-                            elif len(phone) >= 7:
-                                # 固话或其他
-                                tender.contact_phone = phone
-                            break
+                                break
             
             # 提取地址 - 避免匹配到网站备案地址
             if not tender.contact_address:
