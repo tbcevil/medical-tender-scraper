@@ -341,8 +341,8 @@ class GGZYFetcherPlaywright:
                             tender.budget = budget
                             break
             
-            # 提取联系人信息（GGZY详情页结构不一致，简化处理）
-            # self._extract_contact_info(tender, soup, full_text)
+            # 提取联系人信息
+            self._extract_contact_info(tender, soup, full_text)
             
             # 提取标的物
             self._extract_subject_info(tender, soup, full_text)
@@ -354,32 +354,54 @@ class GGZYFetcherPlaywright:
     def _extract_contact_info(self, tender: TenderInfo, soup, full_text: str):
         """提取联系人信息."""
         try:
-            # 提取联系人姓名
+            # 首先尝试从主要内容区域提取（排除页脚）
+            main_content = soup.find('div', class_=['main', 'content', 'article', 'detail'])
+            if main_content:
+                content_text = main_content.get_text()
+            else:
+                content_text = full_text
+            
+            # 提取联系人姓名 - 更宽松的模式
             if not tender.contact_name:
                 patterns = [
-                    r'项目联系人[：:]\s*([^\n]{2,20})(?:\n|$)',
-                    r'联系人[：:]\s*([^\n]{2,20})(?:\n|$)',
-                    r'联系人员[：:]\s*([^\n]{2,20})(?:\n|$)',
+                    r'项目联系人[：:\s]+([^\n]{2,20}?)(?:\n|电话|手机|$)',
+                    r'联系人[：:\s]+([^\n]{2,20}?)(?:\n|电话|手机|$)',
+                    r'联系人员[：:\s]+([^\n]{2,20}?)(?:\n|电话|手机|$)',
+                    r'联\s*系\s*人[：:\s]*([^\d\n]{2,20}?)(?:\d|$)',
                 ]
                 for pattern in patterns:
-                    match = re.search(pattern, full_text)
+                    match = re.search(pattern, content_text)
                     if match:
-                        tender.contact_name = match.group(1).strip()
-                        break
+                        name = match.group(1).strip()
+                        # 过滤掉明显不是人名的内容
+                        if name and len(name) >= 2 and len(name) <= 20 and not any(x in name for x in ['联系', '电话', '地址', '招标', '投标']):
+                            tender.contact_name = name
+                            break
             
-            # 提取电话
+            # 提取电话 - 支持更多格式
             if not tender.contact_phone:
                 patterns = [
-                    r'项目联系人电话[：:\s]+([\d\-]+)',
-                    r'电\s*话[：:\s]+([\d\-]+)',
-                    r'联系方式[：:\s]+([\d\-]+)',
+                    r'项目联系人电话[：:\s]+([\d\-\s]+)',
+                    r'电\s*话[：:\s]+([\d\-\s]+)',
+                    r'联系方式[：:\s]+([\d\-\s]+)',
+                    r'联\s*系\s*电\s*话[：:\s]*([\d\-\s]+)',
+                    r'手机[：:\s]+([\d\-\s]+)',
+                    r'(1[3-9]\d{9})',  # 手机号
+                    r'(\d{3,4}-\d{7,8})',  # 固话
                 ]
                 for pattern in patterns:
-                    match = re.search(pattern, full_text)
+                    match = re.search(pattern, content_text)
                     if match:
-                        phone = match.group(1).strip()
-                        if len(phone) < 50:
-                            tender.contact_phone = phone
+                        phone = match.group(1).strip().replace(' ', '').replace('-', '')
+                        # 验证电话号码格式
+                        if len(phone) >= 7 and len(phone) <= 20:
+                            # 格式化为标准格式
+                            if len(phone) == 11 and phone.startswith('1'):
+                                # 手机号
+                                tender.contact_phone = phone
+                            elif len(phone) >= 7:
+                                # 固话或其他
+                                tender.contact_phone = phone
                             break
             
             # 提取地址 - 避免匹配到网站备案地址
