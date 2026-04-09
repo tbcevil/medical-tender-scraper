@@ -26,7 +26,23 @@ from config import TenderConfig
 
 
 class TenderInfo:
-    """招标信息数据类."""
+    """招标信息数据类 - 13个字段.
+    
+    字段列表:
+    1. keyword - 关键词
+    2. title - 标题
+    3. publish_date - 发布日期
+    4. notice_type - 公告类型
+    5. province - 省份
+    6. purchaser - 采购单位
+    7. agency - 代理机构
+    8. budget - 预算金额
+    9. subject - 标的物
+    10. contact_name - 联系人
+    11. contact_phone - 联系电话
+    12. contact_address - 联系地址
+    13. url - URL
+    """
     
     def __init__(
         self,
@@ -34,23 +50,29 @@ class TenderInfo:
         url: str = "",
         publish_date: str = "",
         province: str = "",
-        platform: str = "",
-        business_type: str = "",
-        info_type: str = "",
-        industry: str = "",
-        project_code: str = "",
-        keyword: str = ""
+        purchaser: str = "",
+        budget: str = "",
+        keyword: str = "",
+        notice_type: str = "",
+        agency: str = "",
+        contact_name: str = "",
+        contact_phone: str = "",
+        contact_address: str = "",
+        subject: str = ""
     ):
         self.title = title
         self.url = url
         self.publish_date = publish_date
         self.province = province
-        self.platform = platform
-        self.business_type = business_type
-        self.info_type = info_type
-        self.industry = industry
-        self.project_code = project_code
+        self.purchaser = purchaser
+        self.budget = budget
         self.keyword = keyword
+        self.notice_type = notice_type
+        self.agency = agency
+        self.contact_name = contact_name
+        self.contact_phone = contact_phone
+        self.contact_address = contact_address
+        self.subject = subject
 
 
 class GGZYFetcher:
