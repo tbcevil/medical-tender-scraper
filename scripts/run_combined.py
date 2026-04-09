@@ -68,7 +68,14 @@ def setup_argument_parser() -> argparse.ArgumentParser:
         "-d", "--days",
         type=int,
         default=7,
-        help="搜索最近几天的数据 (默认: 7)"
+        help="搜索最近几天的数据 (默认: 7, CCGP使用)"
+    )
+    
+    parser.add_argument(
+        "--ggzy-days",
+        type=int,
+        default=7,
+        help="GGZY搜索最近几天的数据 (默认: 7)"
     )
     
     parser.add_argument(
@@ -226,11 +233,7 @@ def export_combined_excel(ccgp_results: dict, ggzy_results: dict, output_file: s
     # 创建GGZY Sheet
     ggzy_count = 0
     if ggzy_results:
-        if not ccgp_results:
-            wb.active.title = "GGZY"
-            ggzy_count = create_sheet(wb, "GGZY", ggzy_results)
-        else:
-            ggzy_count = create_sheet(wb, "GGZY", ggzy_results)
+        ggzy_count = create_sheet(wb, "GGZY", ggzy_results)
         print(f"  GGZY Sheet: {ggzy_count} 条记录")
     
     # 保存文件

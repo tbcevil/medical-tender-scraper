@@ -158,21 +158,57 @@ class GGZYFetcherPlaywright:
         html = self._page.content()
         return html
     
-    def _get_next_page(self) -> str:
+    def _get_next_page(self, current_page: int = 1) -> str:
         """获取下一页内容.
         
+        Args:
+            current_page: 当前页码
+            
         Returns:
             str: 页面HTML
         """
-        # 查找下一页按钮
         try:
-            next_button = self._page.locator('a:has-text("下一页"), .next').first
-            if next_button.is_visible():
-                next_button.click()
-                time.sleep(2)
+            next_page = current_page + 1
+            
+            # 方法1: 尝试点击下一页链接
+            try:
+                # 查找包含下一页文本的链接
+                next_link = self._page.locator(f'a:has-text("{next_page}")').first
+                if next_link.is_visible():
+                    print(f"    点击第{next_page}页链接...")
+                    next_link.click()
+                    time.sleep(3)
+                    return self._page.content()
+            except:
+                pass
+            
+            # 方法2: 尝试执行JavaScript翻页
+            try:
+                print(f"    执行JavaScript翻页到第{next_page}页...")
+                self._page.evaluate(f"getList({next_page})")
+                time.sleep(3)
                 return self._page.content()
-        except:
-            pass
+            except:
+                pass
+            
+            # 方法3: 直接访问下一页URL
+            try:
+                current_url = self._page.url
+                if 'PAGENUMBER' in current_url:
+                    next_url = re.sub(r'PAGENUMBER=\d+', f'PAGENUMBER={next_page}', current_url)
+                else:
+                    separator = '&' if '?' in current_url else '?'
+                    next_url = f"{current_url}{separator}PAGENUMBER={next_page}"
+                
+                print(f"    访问下一页URL...")
+                self._page.goto(next_url, wait_until="networkidle")
+                time.sleep(3)
+                return self._page.content()
+            except:
+                pass
+                
+        except Exception as e:
+            print(f"    翻页失败: {e}")
         
         return ""
     
@@ -305,8 +341,8 @@ class GGZYFetcherPlaywright:
                             tender.budget = budget
                             break
             
-            # 提取联系人信息
-            self._extract_contact_info(tender, soup, full_text)
+            # 提取联系人信息（GGZY详情页结构不一致，简化处理）
+            # self._extract_contact_info(tender, soup, full_text)
             
             # 提取标的物
             self._extract_subject_info(tender, soup, full_text)
@@ -346,17 +382,44 @@ class GGZYFetcherPlaywright:
                             tender.contact_phone = phone
                             break
             
-            # 提取地址
+            # 提取地址 - 避免匹配到网站备案地址
             if not tender.contact_address:
+                # 首先尝试从招标人/采购人信息附近提取
                 patterns = [
-                    r'地\s*址[：:]\s*([^\n]+?)(?:\n|$)',
-                    r'联系地址[：:]\s*([^\n]+?)(?:\n|$)',
+                    # 招标人/采购人地址
+                    r'招标人.*?地址[：:]\s*([^\n]{5,50}?)(?:\n|联系|电话|$)',
+                    r'采购人.*?地址[：:]\s*([^\n]{5,50}?)(?:\n|联系|电话|$)',
+                    r'采购单位.*?地址[：:]\s*([^\n]{5,50}?)(?:\n|联系|电话|$)',
+                    # 代理机构地址
+                    r'代理机构.*?地址[：:]\s*([^\n]{5,50}?)(?:\n|联系|电话|$)',
+                    # 项目联系地址
+                    r'项目联系地址[：:]\s*([^\n]{5,50}?)(?:\n|$)',
                 ]
                 for pattern in patterns:
-                    match = re.search(pattern, full_text)
+                    match = re.search(pattern, full_text, re.DOTALL)
                     if match:
-                        tender.contact_address = match.group(1).strip()
-                        break
+                        address = match.group(1).strip()
+                        # 过滤掉网站备案地址（包含"京ICP"、"京公网安备"等）
+                        if address and not any(x in address for x in ['京ICP', '京公网安备', '国家信息中心', '三里河路', '网站标识码']):
+                            tender.contact_address = address
+                            break
+                
+                # 如果还没找到，尝试更通用的模式，但要排除页脚
+                if not tender.contact_address:
+                    # 查找主要内容区域（排除footer）
+                    main_content = soup.find('div', class_=['main', 'content', 'article'])
+                    if main_content:
+                        content_text = main_content.get_text()
+                        patterns = [
+                            r'地址[：:]\s*([^\n]{5,40}?)(?:\n|电话|$)',
+                        ]
+                        for pattern in patterns:
+                            match = re.search(pattern, content_text)
+                            if match:
+                                address = match.group(1).strip()
+                                if address and not any(x in address for x in ['京ICP', '京公网安备', '国家信息中心', '三里河路', '网站标识码']):
+                                    tender.contact_address = address
+                                    break
         except Exception:
             pass
     
@@ -513,15 +576,15 @@ class GGZYFetcherPlaywright:
             
             # 如果需要获取更多页
             if fetch_all or len(all_results) < max_results:
-                page = 1
+                current_page = 1
                 while True:
                     if not fetch_all and len(all_results) >= max_results:
                         break
                     
-                    page += 1
-                    print(f"  获取第 {page} 页...")
+                    current_page += 1
+                    print(f"  获取第 {current_page} 页...")
                     
-                    next_html = self._get_next_page()
+                    next_html = self._get_next_page(current_page)
                     if not next_html:
                         print(f"  没有更多页面")
                         break
