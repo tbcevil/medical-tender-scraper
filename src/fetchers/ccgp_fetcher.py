@@ -644,27 +644,59 @@ class CCGPFetcher:
             bool: 如果是无效内容返回True
         """
         invalid_patterns = [
+            # 页面导航/页脚文字
+            r'首页.*政采.*法规',
+            r'购买服务',
+            r'监督检查',
+            r'信息公告',
+            r'国际专栏',
+            r'中国政府采购网',
+            r'网站地图',
+            r'关于我们',
+            r'联系方式',
+            r'版权声明',
+            r'隐私政策',
+            # 公告提示文字
             r'本公告页面内容仅供阅览使用',
             r'供应商只有登陆',
-            r'政府采购网',
             r'首次参与',
             r'CA数字证书',
+            # 招投标流程相关
             r'投标文件',
             r'投标人',
             r'招标公告',
             r'中标公告',
             r'采购公告',
+            r'询价公告',
+            r'竞争性谈判',
+            r'竞争性磋商',
+            r'单一来源',
             r'在线开评标',
             r'电子招投标',
             r'操作手册',
+            # 操作按钮/链接
             r'下载',
             r'注册',
             r'登录',
+            r'查看更多',
+            r'点击',
+            r'返回',
+            # 其他常见无效内容
+            r'分享到',
+            r'收藏',
+            r'打印',
+            r'关闭',
         ]
         
         for pattern in invalid_patterns:
             if re.search(pattern, text):
                 return True
+        
+        # 检查是否全是导航类词汇组合（没有实际设备名称）
+        navigation_keywords = ['首页', '政采', '法规', '购买', '服务', '监督', '检查', '信息', '公告', '国际', '专栏']
+        matched_keywords = sum(1 for kw in navigation_keywords if kw in text)
+        if matched_keywords >= 4 and len(text) < 50:  # 如果包含4个以上的导航关键词且长度较短
+            return True
         
         return False
     
