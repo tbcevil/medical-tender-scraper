@@ -1,50 +1,68 @@
 ---
 name: medical-tender-scraper
-description: 医疗器械招投标信息搜集工具。从中国政府采购网等平台抓取医疗器械相关招标信息，输出为Excel表格。Use when: (1) 需要搜集医疗器械招标信息，(2) 需要监控特定医疗设备的采购公告，(3) 需要导出招标信息到Excel，(4) 需要定期获取招标信息更新。
+description: 医疗器械招投标信息搜集工具。从中国政府采购网(CCGP)和全国公共资源交易平台(GGZY)抓取医疗器械相关招标信息，输出为Excel表格。Use when: (1) 需要搜集医疗器械招标信息，(2) 需要监控特定医疗设备的采购公告，(3) 需要导出招标信息到Excel，(4) 需要定期获取招标信息更新。
 ---
 
 # 医疗器械招投标信息搜集工具
 
-从中国政府采购网抓取医疗器械相关招标信息，支持关键词搜索、多字段提取、Excel导出。
+从中国政府采购网(CCGP)和全国公共资源交易平台(GGZY)抓取医疗器械相关招标信息，支持关键词搜索、多字段提取、Excel导出。
 
 ## 功能特性
 
+- **双平台支持**：同时支持CCGP和GGZY两个平台
 - **关键词搜索**：支持自定义关键词（如"眼科"、"激光"等）
 - **时间范围**：可指定搜索最近N天的招标信息
 - **多字段提取**：提取13个字段（标题、日期、省份、采购单位、预算、标的物、联系人等）
-- **Excel导出**：支持单工作表和多工作表格式
+- **Excel导出**：CCGP和GGZY数据分别导出到不同Sheet
 - **自动命名**：输出文件自动带上日期（medical_tenders_YYYYMMDD.xlsx）
 - **智能重试**：每页请求失败时自动重试（最多3次，递增等待）
 - **获取全部**：支持 `--all` 参数获取所有结果，不受数量限制
 
 ## 使用方法
 
-### 命令行运行
+### 推荐：合并抓取（CCGP + GGZY）
 
 ```bash
 # 基本使用（默认搜索"眼科"，最近7天）
-python run.py
+python scripts/run_combined.py
 
 # 指定关键词
-python run.py -k 眼科
+python scripts/run_combined.py -k 眼科
 
 # 指定多个关键词
-python run.py -k 眼科 激光 显微镜
-
-# 指定时间范围（最近14天）
-python run.py -d 14
+python scripts/run_combined.py -k 眼科 激光 显微镜
 
 # 指定最大结果数
-python run.py --max-results 50
+python scripts/run_combined.py --max-results 50
 
 # 获取所有结果（不限制数量）
-python run.py --all
+python scripts/run_combined.py --all
 
-# 多工作表导出
-python run.py --multi-sheet
+# 只抓取CCGP
+python scripts/run_combined.py --ccgp-only
+
+# 只抓取GGZY（需要先安装Playwright）
+python scripts/run_combined.py --ggzy-only
 
 # 完整示例
-python run.py -k 眼科 -d 7 --max-results 50 --multi-sheet -v
+python scripts/run_combined.py -k 眼科 -d 7 --max-results 50 -v
+```
+
+### 单独抓取CCGP
+
+```bash
+python scripts/run.py -k 眼科 -d 7 --max-results 50
+```
+
+### 单独抓取GGZY
+
+```bash
+# 安装Playwright依赖
+pip install playwright
+playwright install chromium
+
+# 运行抓取
+python scripts/run_ggzy.py -k 眼科 --max-results 50
 ```
 
 ### 参数说明
@@ -52,12 +70,20 @@ python run.py -k 眼科 -d 7 --max-results 50 --multi-sheet -v
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
 | `-k, --keywords` | 搜索关键词列表 | ["眼科"] |
-| `-d, --days` | 搜索最近N天 | 7 |
+| `-d, --days` | 搜索最近N天（仅CCGP） | 7 |
 | `-o, --output` | 输出文件名 | 自动生成 |
-| `--max-results` | 每个关键词最大结果数，0表示全部 | 100 |
+| `--max-results` | 每个关键词最大结果数，0表示全部 | 20 |
 | `--all` | 获取所有结果（等同于 --max-results 0） | False |
-| `--multi-sheet` | 使用多工作表格式 | False |
+| `--ccgp-only` | 只抓取CCGP数据 | False |
+| `--ggzy-only` | 只抓取GGZY数据 | False |
 | `-v, --verbose` | 显示详细输出 | False |
+
+### 数据源说明
+
+| 平台 | 网址 | 数据类型 | 技术方案 |
+|------|------|----------|----------|
+| CCGP | ccgp.gov.cn | 政府采购 | 标准HTTP请求 |
+| GGZY | ggzy.gov.cn | 公共资源交易（工程、采购等） | Playwright浏览器自动化 |
 
 ## 输出字段
 

@@ -1,10 +1,10 @@
 # 医疗器械招投标信息搜集工具
 
-从中国政府采购网抓取医疗器械相关招标信息的MVP版本。
+从中国政府采购网(CCGP)和全国公共资源交易平台(GGZY)抓取医疗器械相关招标信息。
 
 ## 功能特性
 
-- 🔍 支持多关键词搜索（默认：眼科、皮肤科）
+- 🔍 支持多关键词搜索（默认：眼科）
 - 📅 可配置时间范围（默认：最近7天）
 - 📊 导出为格式化的Excel文件
 - 🏷️ 自动去重和关键词标记
@@ -12,6 +12,8 @@
 - 🖥️ 命令行界面，易于使用
 - 🔄 **智能重试机制** - 每页最多重试3次，自动处理网络超时
 - 📄 **获取所有结果** - 支持 `--all` 参数获取全部招标信息
+- 🌐 **双平台支持** - 同时支持CCGP和GGZY两个平台
+- 📑 **多Sheet导出** - CCGP和GGZY数据分别导出到不同Sheet
 
 ## 项目结构
 
@@ -25,10 +27,16 @@ skills/medical-tender-scraper/
 │   ├── main.py                # 主程序
 │   ├── fetchers/
 │   │   ├── __init__.py
-│   │   └── ccgp_fetcher.py    # 中国政府采购网抓取器
+│   │   ├── ccgp_fetcher.py    # 中国政府采购网抓取器
+│   │   ├── ggzy_fetcher.py    # 全国公共资源交易平台抓取器
+│   │   └── ggzy_fetcher_playwright.py  # GGZY Playwright版本
 │   └── exporters/
 │       ├── __init__.py
 │       └── excel_exporter.py  # Excel导出器
+├── scripts/
+│   ├── run.py                 # CCGP运行入口
+│   ├── run_ggzy.py            # GGZY运行入口
+│   └── run_combined.py        # 合并运行入口
 ├── tests/
 │   ├── __init__.py
 │   ├── test_config.py
@@ -38,7 +46,6 @@ skills/medical-tender-scraper/
 │   ├── test_excel_exporter.py
 │   └── test_main.py
 ├── docs/
-├── run.py                     # 运行入口
 ├── requirements.txt           # 依赖列表
 └── README.md                  # 项目说明
 ```
@@ -62,41 +69,59 @@ pip install -r requirements.txt
 
 ## 使用方法
 
-### 基本使用
+### 1. 合并抓取（推荐）
+
+同时抓取CCGP和GGZY两个平台：
 
 ```bash
-python run.py
+python scripts/run_combined.py -k 眼科
 ```
 
-### 命令行参数
+### 2. 单独抓取CCGP
 
 ```bash
-python run.py -h
+python scripts/run.py -k 眼科
 ```
 
-常用参数：
+### 3. 单独抓取GGZY
+
+```bash
+# 需要先安装Playwright
+pip install playwright
+playwright install chromium
+
+python scripts/run_ggzy.py -k 眼科
+```
+
+### 常用参数
 
 ```bash
 # 指定关键词
-python run.py -k 眼科 皮肤科 口腔科
+python scripts/run_combined.py -k 眼科 激光 显微镜
 
-# 指定时间范围（最近14天）
-python run.py -d 14
+# 指定时间范围（最近7天，仅CCGP）
+python scripts/run_combined.py -d 7
 
 # 指定输出文件
-python run.py -o my_tenders.xlsx
+python scripts/run_combined.py -o my_tenders.xlsx
 
-# 按关键词分多个工作表导出
-python run.py --multi-sheet
+# 指定最大结果数
+python scripts/run_combined.py --max-results 50
+
+# 获取所有结果
+python scripts/run_combined.py --all
+
+# 只抓取CCGP
+python scripts/run_combined.py --ccgp-only
+
+# 只抓取GGZY
+python scripts/run_combined.py --ggzy-only
 
 # 显示详细输出
-python run.py -v
-
-# 获取所有结果（不限制数量）
-python run.py --all
+python scripts/run_combined.py -v
 
 # 组合使用
-python run.py -k 眼科 -d 30 -o 眼科招标.xlsx -v
+python scripts/run_combined.py -k 眼科 -d 7 --max-results 50 -v
 ```
 
 ### 参数说明
@@ -104,12 +129,20 @@ python run.py -k 眼科 -d 30 -o 眼科招标.xlsx -v
 | 参数 | 简写 | 说明 | 默认值 |
 |------|------|------|--------|
 | --keywords | -k | 搜索关键词列表 | 眼科 |
-| --days | -d | 搜索最近多少天 | 7 |
-| --output | -o | 输出文件路径 | medical_tenders_时间戳.xlsx |
-| --max-results | | 每个关键词最大结果数，0表示全部 | 100 |
+| --days | -d | 搜索最近多少天（仅CCGP） | 7 |
+| --output | -o | 输出文件路径 | combined_tenders_时间戳.xlsx |
+| --max-results | | 每个关键词最大结果数，0表示全部 | 20 |
 | --all | | 获取所有结果（等同于 --max-results 0） | False |
-| --multi-sheet | | 按关键词分多个工作表 | False |
+| --ccgp-only | | 只抓取CCGP数据 | False |
+| --ggzy-only | | 只抓取GGZY数据 | False |
 | --verbose | -v | 显示详细输出 | False |
+
+### 数据源说明
+
+| 平台 | 网址 | 特点 | 技术方案 |
+|------|------|------|----------|
+| CCGP | ccgp.gov.cn | 政府采购信息 | 标准HTTP请求 |
+| GGZY | ggzy.gov.cn | 公共资源交易（含工程、采购等） | Playwright浏览器自动化 |
 
 ## 配置说明
 
@@ -150,11 +183,13 @@ pytest --cov=src --cov-report=html
 ## 注意事项
 
 1. **请求频率**：工具内置了1.5秒的请求间隔，避免对目标网站造成压力
-2. **网络环境**：确保网络可以访问中国政府采购网 (ccgp.gov.cn)
+2. **网络环境**：确保网络可以访问中国政府采购网 (ccgp.gov.cn) 和全国公共资源交易平台 (ggzy.gov.cn)
 3. **编码问题**：工具会自动检测和转换页面编码
 4. **数据去重**：相同URL的招标信息会自动去重
 5. **重试机制**：每页请求失败时会自动重试，最多3次，等待时间递增（2秒→4秒→6秒）
 6. **分页获取**：网站每页显示20条结果，工具会自动获取多页直到达到限制或获取全部
+7. **GGZY依赖**：GGZY抓取需要安装Playwright和Chromium浏览器
+8. **字段差异**：CCGP和GGZY的字段覆盖程度可能不同，部分字段在某些平台可能为空
 
 ## 开发计划
 
@@ -173,6 +208,13 @@ pytest --cov=src --cov-report=html
 - [ ] Web界面
 
 ## 更新日志
+
+### v1.3 (2026-04-09)
+- 添加全国公共资源交易平台(GGZY)抓取器
+- 支持CCGP和GGZY双平台同时抓取
+- 导出Excel包含两个Sheet（CCGP和GGZY）
+- 优化GGZY详情页信息提取（采购单位、联系人、电话、地址）
+- 添加合并运行脚本 `run_combined.py`
 
 ### v1.2 (2026-04-09)
 - 增强标的物无效内容过滤
