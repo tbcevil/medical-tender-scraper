@@ -1,21 +1,23 @@
 # 医疗器械招投标信息搜集工具
 
 > 开发完成日期：2026-04-07  
-> 版本：v1.0  
-> 状态：✅ 已封装为OpenClaw Skill
+> 版本：v1.4  
+> 状态：✅ 已封装为OpenClaw Skill  
+> 支持平台：CCGP（中国政府采购网）+ GGZY（全国公共资源交易平台）
 
 ---
 
 ## 项目概述
 
-从中国政府采购网抓取医疗器械相关招标信息，支持关键词搜索、多字段提取、Excel导出。
+从中国政府采购网（CCGP）和全国公共资源交易平台（GGZY）抓取医疗器械相关招标信息，支持关键词搜索、多字段提取、Excel导出。
 
 ### 核心功能
 
+- ✅ **双平台支持**：同时支持CCGP和GGZY两个平台
 - ✅ **关键词搜索**：支持自定义关键词（如"眼科"、"激光"等）
 - ✅ **时间范围**：可指定搜索最近N天的招标信息
 - ✅ **多字段提取**：提取13个字段（标题、日期、省份、采购单位、预算、标的物、联系人等）
-- ✅ **Excel导出**：支持单工作表和多工作表格式
+- ✅ **Excel导出**：CCGP和GGZY数据分别导出到不同Sheet
 - ✅ **自动命名**：输出文件自动带上日期（medical_tenders_YYYYMMDD.xlsx）
 
 ---
@@ -35,17 +37,20 @@ pip install -r requirements.txt
 ### 基本使用
 
 ```bash
-# 默认运行（搜索"眼科"，最近7天）
-python scripts/run.py
+# 合并抓取（CCGP + GGZY，推荐）
+python scripts/run_combined.py -k 眼科
 
-# 指定关键词
+# 只抓取CCGP
 python scripts/run.py -k 眼科
 
-# 指定时间范围（最近14天）
-python scripts/run.py -d 14
+# 只抓取GGZY（需要安装Playwright）
+python scripts/run_ggzy.py -k 眼科
+
+# 指定时间范围（最近7天）
+python scripts/run_combined.py -d 7
 
 # 指定最大结果数
-python scripts/run.py --max-results 50
+python scripts/run_combined.py --max-results 50
 
 # 多工作表导出
 python scripts/run.py --multi-sheet

@@ -1,7 +1,7 @@
 # 医疗器械招投标信息搜集工具 - 使用指南
 
-> 版本：v1.2  
-> 更新日期：2026-04-09
+> 版本：v1.4  
+> 更新日期：2026-04-10
 
 ---
 
@@ -26,11 +26,17 @@
 # 进入Skill目录
 cd ~/.stepclaw/skills/medical-tender-scraper
 
-# 运行（默认搜索"眼科"，最近7天）
+# 运行合并抓取（CCGP + GGZY，默认搜索"眼科"，最近7天）
+python scripts/run_combined.py
+
+# 或只运行CCGP
 python scripts/run.py
+
+# 或只运行GGZY（需要安装Playwright）
+python scripts/run_ggzy.py
 ```
 
-运行后会在当前目录生成Excel文件，如：`medical_tenders_20260407.xlsx`
+运行后会在当前目录生成Excel文件，如：`medical_tenders_20260410.xlsx`
 
 ---
 
@@ -80,55 +86,72 @@ python scripts/run.py [选项]
 
 ### 常用命令示例
 
-#### 示例1：搜索单个关键词
+#### 示例1：合并抓取（推荐）
 
 ```bash
-python scripts/run.py -k 眼科
+# 同时抓取CCGP和GGZY
+python scripts/run_combined.py -k 眼科
+
+# 只抓取CCGP
+python scripts/run_combined.py -k 眼科 --ccgp-only
+
+# 只抓取GGZY
+python scripts/run_combined.py -k 眼科 --ggzy-only
 ```
 
 #### 示例2：搜索多个关键词
 
 ```bash
-python scripts/run.py -k 眼科 激光 显微镜
+python scripts/run_combined.py -k 眼科 激光 显微镜
 ```
 
 #### 示例3：指定时间范围
 
 ```bash
-# 搜索最近14天
-python scripts/run.py -d 14
+# 搜索最近7天（GGZY也支持时间范围）
+python scripts/run_combined.py -d 7
 
-# 搜索最近30天
-python scripts/run.py -d 30
+# 搜索最近14天
+python scripts/run_combined.py -d 14
 ```
 
 #### 示例4：限制结果数量
 
 ```bash
 # 每个关键词最多50条
-python scripts/run.py --max-results 50
+python scripts/run_combined.py --max-results 50
 
 # 获取所有结果（不限制数量）
-python scripts/run.py --all
+python scripts/run_combined.py --all
 ```
 
-#### 示例5：多工作表导出
+#### 示例5：指定输出文件名
 
 ```bash
-# 每个关键词一个工作表
-python scripts/run.py --multi-sheet
+python scripts/run_combined.py -o my_tenders.xlsx
 ```
 
 #### 示例6：完整示例
 
 ```bash
-python scripts/run.py -k 眼科 -d 7 --max-results 50 --multi-sheet -v
+python scripts/run_combined.py -k 眼科 -d 7 --max-results 50 -v
 ```
 
-#### 示例7：指定输出文件名
+### 单独运行CCGP
 
 ```bash
-python scripts/run.py -o my_tenders.xlsx
+python scripts/run.py -k 眼科 -d 7 --max-results 50
+```
+
+### 单独运行GGZY
+
+```bash
+# 需要先安装Playwright
+pip install playwright
+playwright install chromium
+
+# 运行GGZY抓取
+python scripts/run_ggzy.py -k 眼科 --max-results 50
 ```
 
 ---
@@ -226,9 +249,15 @@ for tender in results:
 ### 方法1：OpenClaw Cron（推荐）
 
 ```bash
-# 每周四上午10:00自动运行
+# 每周四上午10:00自动运行（合并抓取CCGP+GGZY）
 openclaw cron add \
   --name "每周眼科招标采集" \
+  --schedule "0 10 * * 4" \
+  --command "python ~/.stepclaw/skills/medical-tender-scraper/scripts/run_combined.py -k 眼科 -d 7 --max-results 50"
+
+# 只抓取CCGP
+openclaw cron add \
+  --name "每周眼科招标采集-CCGP" \
   --schedule "0 10 * * 4" \
   --command "python ~/.stepclaw/skills/medical-tender-scraper/scripts/run.py -k 眼科 -d 7"
 ```
@@ -247,10 +276,10 @@ crontab -e
 
 添加任务：
 ```bash
-# 每周四上午10:00运行
-0 10 * * 4 cd ~/.stepclaw/skills/medical-tender-scraper && python scripts/run.py -k 眼科 -d 7
+# 每周四上午10:00运行（合并抓取）
+0 10 * * 4 cd ~/.stepclaw/skills/medical-tender-scraper && python scripts/run_combined.py -k 眼科 -d 7 --max-results 50
 
-# 每天上午9:00运行
+# 每天上午9:00运行（只抓取CCGP）
 0 9 * * * cd ~/.stepclaw/skills/medical-tender-scraper && python scripts/run.py -k 眼科 激光 -d 1
 ```
 
@@ -420,6 +449,26 @@ python scripts/run.py -d 30
 - v1.2版本已修复此问题
 - 增强了无效内容过滤，自动识别并过滤页面导航、公告提示等文字
 - 建议更新到最新版本
+
+### Q9: GGZY搜索结果与关键词不相关
+
+**原因**：早期版本使用错误的搜索参数
+
+**解决**：
+- v1.4版本已修复此问题
+- 改用正确的`FINDTXT`搜索参数
+- 添加`DEAL_TIME`时间范围参数
+- 现在搜索结果与关键词真正相关
+
+### Q10: GGZY联系人为空或显示不正确
+
+**原因**：GGZY详情页结构特殊，需要访问真实详情页URL
+
+**解决**：
+- v1.4版本已修复此问题
+- 支持通过`firstLastUrl`跳转获取真实详情页
+- 改进正则表达式匹配企业招标格式
+- 添加联系地址过滤，排除网站备案地址
 
 ### Q5: 如何只导出特定省份的数据？
 
