@@ -137,7 +137,7 @@ pip install -r requirements.txt
 1. **请求频率**：程序会自动控制请求频率（每页间隔1.5秒），避免对服务器造成压力
 2. **编码问题**：Windows控制台可能显示乱码，但不影响Excel文件内容
 3. **预算金额**：只有部分招标信息标注了预算，未标注的显示为空
-4. **数据来源**：目前仅支持中国政府采购网（ccgp.gov.cn）
+4. **数据来源**：支持中国政府采购网（ccgp.gov.cn）和全国公共资源交易平台（ggzy.gov.cn）
 5. **重试机制**：网络超时或失败时自动重试，最多3次，等待时间递增（2秒→4秒→6秒）
 6. **分页获取**：网站每页显示20条结果，工具会自动获取多页直到达到限制或获取全部
 7. **标的物过滤**：自动过滤页面导航、公告提示等无效内容
@@ -161,8 +161,15 @@ pip install -r requirements.txt
 使用cron配置每周四上午10:00自动运行：
 
 ```bash
+# CCGP单独抓取
 openclaw cron add \
-  --name "每周眼科招标采集" \
+  --name "每周眼科招标采集-CCGP" \
   --schedule "0 10 * * 4" \
   --command "python skills/medical-tender-scraper/scripts/run.py -k 眼科 -d 7"
+
+# CCGP和GGZY合并抓取
+openclaw cron add \
+  --name "每周眼科招标采集-合并" \
+  --schedule "0 10 * * 4" \
+  --command "python skills/medical-tender-scraper/scripts/run_combined.py -k 眼科 -d 7 --max-results 50"
 ```

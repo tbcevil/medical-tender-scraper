@@ -209,11 +209,17 @@ pytest --cov=src --cov-report=html
 
 ## 更新日志
 
+### v1.4 (2026-04-10)
+- 修复GGZY搜索URL参数，使用正确的FINDTXT接口
+- 添加DEAL_TIME时间范围参数支持（01-05对应不同时间范围）
+- 修复GGZY详情页信息提取，正确获取采购单位、联系人、电话、地址
+- 修复GGZY翻页功能，支持JavaScript翻页
+- 优化GGZY搜索结果相关性，确保与关键词匹配
+
 ### v1.3 (2026-04-09)
 - 添加全国公共资源交易平台(GGZY)抓取器
 - 支持CCGP和GGZY双平台同时抓取
 - 导出Excel包含两个Sheet（CCGP和GGZY）
-- 优化GGZY详情页信息提取（采购单位、联系人、电话、地址）
 - 添加合并运行脚本 `run_combined.py`
 
 ### v1.2 (2026-04-09)
@@ -232,7 +238,6 @@ pytest --cov=src --cov-report=html
 - 实现中国政府采购网抓取
 - 13个字段完整提取
 - Excel导出功能
-- 定时任务支持
 
 ## 许可证
 
