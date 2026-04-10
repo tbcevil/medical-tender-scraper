@@ -137,8 +137,24 @@ class GGZYFetcherPlaywright:
         """
         self._init_browser()
         
-        # 直接构建搜索URL
-        search_url = f"{self.SEARCH_URL}?keyword={keyword}"
+        # 构建搜索URL - 使用FINDTXT参数和DEAL_TIME时间范围
+        # DEAL_TIME: 01=近一天, 02=近两天, 03=近三天, 04=近一周, 05=近一月
+        import urllib.parse
+        encoded_keyword = urllib.parse.quote(keyword)
+        
+        # 将days_back映射到DEAL_TIME
+        if self.config.days_back <= 1:
+            deal_time = "01"
+        elif self.config.days_back <= 2:
+            deal_time = "02"
+        elif self.config.days_back <= 3:
+            deal_time = "03"
+        elif self.config.days_back <= 7:
+            deal_time = "04"  # 近一周
+        else:
+            deal_time = "05"  # 近一月
+        
+        search_url = f"{self.SEARCH_URL}?DEAL_TIME={deal_time}&FINDTXT={encoded_keyword}"
         print(f"  访问搜索URL: {search_url}")
         
         self._page.goto(search_url, wait_until="networkidle")
