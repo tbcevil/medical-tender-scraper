@@ -309,18 +309,31 @@ class GGZYFetcherPlaywright:
             time.sleep(2)
             
             html = self._page.content()
+            
+            # GGZY详情页通常有firstLastUrl指向真实内容页
+            match = re.search(r"firstLastUrl\s*=\s*['\"]([^'\"]+)['\"]", html)
+            if match:
+                real_url = match.group(1)
+                if real_url.startswith('/'):
+                    real_url = urljoin(self.BASE_URL, real_url)
+                print(f"      访问真实详情页...")
+                self._page.goto(real_url, wait_until="networkidle")
+                time.sleep(2)
+                html = self._page.content()
+            
             soup = BeautifulSoup(html, "html.parser")
             full_text = soup.get_text()
             
             # 提取采购单位（采购人）- 支持多种格式
             if not tender.purchaser:
                 patterns = [
-                    r'采购人信息[：:]\s*\n?\s*名称[：:]\s*([^\n]+?)(?:\n|$)',
+                    r'采购人信息[：:]\s*名称[：:]\s*([^\n]+?)(?:\n|$)',
+                    r'采购人信息[\s\S]*?名称[：:]\s*([^\n]+?)(?:\n|地址|$)',
                     r'采购人[：:]\s*([^\n]+?)(?:\n|$)',
                     r'采购单位[：:]\s*([^\n]+?)(?:\n|$)',
                     r'招标人[：:]\s*([^\n]+?)(?:\n|$)',
                     r'招标单位[：:]\s*([^\n]+?)(?:\n|$)',
-                    r'名称[：:]\s*([^\n]+?)(?:\n|地址|$)',  # 企业招标格式
+                    r'名称[：:]\s*([^\n]{5,50}?)(?:\n|地址|$)',  # 企业招标格式
                 ]
                 for pattern in patterns:
                     match = re.search(pattern, full_text)
@@ -364,15 +377,15 @@ class GGZYFetcherPlaywright:
             # 提取联系地址（从采购人地址）
             if not tender.contact_address:
                 patterns = [
-                    r'采购人信息[\s\S]*?地址[：:]\s*([^\n]+?)(?:\n|联系|$)',
-                    r'地址[：:]\s*([^\n]{10,80}?)(?:\n|联系|电话|$)',
+                    r'采购人信息[\s\S]{0,200}地址[：:]\s*([^\n]{10,100}?)(?:\n|联系|电话|$)',
+                    r'地址[：:]\s*([^\n]{10,100}?)(?:\n|联系|电话|$)',
                 ]
                 for pattern in patterns:
                     match = re.search(pattern, full_text)
                     if match:
                         address = match.group(1).strip()
                         # 过滤掉网站备案地址
-                        if address and not any(x in address for x in ['京ICP', '京公网安备', '国家信息中心', '网站标识码']):
+                        if address and not any(x in address for x in ['京ICP', '京公网安备', '国家信息中心', '网站标识码', '三里河路', '西城区', '邮政编码']):
                             tender.contact_address = address
                             break
             
@@ -399,7 +412,7 @@ class GGZYFetcherPlaywright:
             # 提取联系人姓名 - 支持企业招标格式
             if not tender.contact_name:
                 patterns = [
-                    r'采购人信息[\s\S]*?联系人[：:]\s*([^\n]{1,10}?)(?:\n|电话|$)',
+                    r'采购人信息[\s\S]{0,300}联系人[：:]\s*([^\n]{1,10}?)(?:\n|电话|$)',
                     r'项目联系人[：:\s]+([^\n]{2,20}?)(?:\n|电话|手机|$)',
                     r'联系人[：:\s]+([^\n]{2,20}?)(?:\n|电话|手机|$)',
                     r'联系人员[：:\s]+([^\n]{2,20}?)(?:\n|电话|手机|$)',
@@ -417,7 +430,7 @@ class GGZYFetcherPlaywright:
             # 提取电话 - 支持更多格式和企业招标格式
             if not tender.contact_phone:
                 patterns = [
-                    (r'采购人信息[\s\S]*?联系电话[：:]\s*([\d\-]+)', 'contact_section'),
+                    (r'采购人信息[\s\S]{0,300}联系电话[：:]\s*([\d\-]+)', 'contact_section'),
                     (r'项目联系人电话[：:\s]+([\d\-\s]+)', 'contact_section'),
                     (r'联\s*系\s*电\s*话[：:\s]*([\d\-\s]+)', 'contact_section'),
                     (r'电\s*话[：:\s]+([\d\-\s]+)', 'general'),
@@ -658,7 +671,7 @@ class GGZYFetcherPlaywright:
                     
                     results = self.parse_list_page(next_html)
                     if not results:
-                        print(f"  第 {page} 页无数据")
+                        print(f"  第 {current_page} 页无数据")
                         break
                     
                     for result in results:
@@ -675,7 +688,7 @@ class GGZYFetcherPlaywright:
                             if not fetch_all and len(all_results) >= max_results:
                                 break
                     
-                    print(f"  第{page}页找到 {len(results)} 条，累计 {len(all_results)} 条")
+                    print(f"  第{current_page}页找到 {len(results)} 条，累计 {len(all_results)} 条")
                     
                     # 检查是否还有下一页
                     if len(results) < 20:  # 每页通常20条
