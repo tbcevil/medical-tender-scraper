@@ -186,42 +186,92 @@ class GGZYFetcherPlaywright:
         try:
             next_page = current_page + 1
             
-            # 方法1: 尝试点击下一页链接
+            # GGZY使用Vue.js SPA，分页组件class为'paging'
+            # 方法1: 点击具体的页码数字
             try:
-                # 查找包含下一页文本的链接
-                next_link = self._page.locator(f'a:has-text("{next_page}")').first
-                if next_link.is_visible():
-                    print(f"    点击第{next_page}页链接...")
-                    next_link.click()
-                    time.sleep(3)
-                    return self._page.content()
-            except:
-                pass
-            
-            # 方法2: 尝试执行JavaScript翻页
-            try:
-                print(f"    执行JavaScript翻页到第{next_page}页...")
-                self._page.evaluate(f"getList({next_page})")
+                # 先等待页面完全加载
+                print(f"    等待页面稳定...")
                 time.sleep(3)
-                return self._page.content()
-            except:
-                pass
-            
-            # 方法3: 直接访问下一页URL
-            try:
-                current_url = self._page.url
-                if 'PAGENUMBER' in current_url:
-                    next_url = re.sub(r'PAGENUMBER=\d+', f'PAGENUMBER={next_page}', current_url)
-                else:
-                    separator = '&' if '?' in current_url else '?'
-                    next_url = f"{current_url}{separator}PAGENUMBER={next_page}"
                 
-                print(f"    访问下一页URL...")
-                self._page.goto(next_url, wait_until="networkidle")
-                time.sleep(3)
-                return self._page.content()
-            except:
-                pass
+                # 等待分页组件加载（使用更长的超时时间）
+                print(f"    等待分页组件加载...")
+                self._page.wait_for_selector('.paging', timeout=10000)
+                
+                # GGZY分页结构: <a href="javascript:;" class="">2</a>
+                # 查找包含下一页数字的链接
+                page_links = self._page.locator('.paging a')
+                count = page_links.count()
+                
+                if count > 0:
+                    for i in range(count):
+                        try:
+                            link = page_links.nth(i)
+                            text = link.inner_text().strip()
+                            if text == str(next_page):
+                                print(f"    点击第{next_page}页链接...")
+                                link.click()
+                                
+                                # 等待Vue.js重新渲染
+                                time.sleep(4)
+                                
+                                # 等待结果列表更新
+                                try:
+                                    self._page.wait_for_timeout(2000)  # 先等待2秒让Vue.js开始渲染
+                                    self._page.wait_for_selector('.publicont', timeout=10000)
+                                    print(f"    第{next_page}页内容已加载")
+                                except:
+                                    print(f"    等待页面更新超时")
+                                    time.sleep(2)
+                                
+                                # 额外等待确保渲染完成
+                                time.sleep(2)
+                                
+                                return self._page.content()
+                        except:
+                            continue
+                        
+            except Exception as e:
+                print(f"    点击页码链接失败: {e}")
+            
+            # 方法2: 点击"下一页"按钮
+            try:
+                # 先等待分页组件
+                self._page.wait_for_selector('.paging', timeout=10000)
+                time.sleep(2)  # 额外等待确保Vue.js渲染完成
+                
+                # GGZY有两个"下一页"按钮，第一个是禁用的，第二个才是可用的
+                # 查找所有"下一页"按钮，选择cursor: pointer的那个
+                next_buttons = self._page.locator('.paging a.a_righta')
+                count = next_buttons.count()
+                
+                next_btn = None
+                for i in range(count):
+                    btn = next_buttons.nth(i)
+                    if btn.is_visible():
+                        style = btn.evaluate('el => el.getAttribute("style")') or ''
+                        text = btn.inner_text().strip()
+                        if text == '下一页' and 'pointer' in style:
+                            next_btn = btn
+                            break
+                
+                if next_btn and next_btn.is_visible():
+                    # 检查是否禁用（style="cursor: default;"表示禁用）
+                    style = next_btn.evaluate('el => el.getAttribute("style")') or ''
+                    if 'default' not in style:
+                        print(f"    点击'下一页'按钮...")
+                        next_btn.click()
+                        time.sleep(4)
+                        print(f"    第{next_page}页内容已加载")
+                        return self._page.content()
+                    else:
+                        print(f"    '下一页'按钮已禁用，已到最后一页")
+                        return ""
+                        
+            except Exception as e:
+                print(f"    点击'下一页'按钮失败: {e}")
+            
+            # 方法3: 如果上述方法都失败
+            print(f"    无法翻页到第{next_page}页，可能只有一页或分页组件未找到")
                 
         except Exception as e:
             print(f"    翻页失败: {e}")
@@ -319,12 +369,16 @@ class GGZYFetcherPlaywright:
         Args:
             tender: TenderInfo对象，会被修改
         """
+        # 创建新页面访问详情页，避免影响列表页
+        detail_page = None
         try:
+            detail_page = self._browser.new_page()
+            
             # 访问详情页
-            self._page.goto(tender.url, wait_until="networkidle")
+            detail_page.goto(tender.url, wait_until="networkidle")
             time.sleep(2)
             
-            html = self._page.content()
+            html = detail_page.content()
             
             # GGZY详情页通常有firstLastUrl指向真实内容页
             match = re.search(r"firstLastUrl\s*=\s*['\"]([^'\"]+)['\"]", html)
@@ -333,9 +387,9 @@ class GGZYFetcherPlaywright:
                 if real_url.startswith('/'):
                     real_url = urljoin(self.BASE_URL, real_url)
                 print(f"      访问真实详情页...")
-                self._page.goto(real_url, wait_until="networkidle")
+                detail_page.goto(real_url, wait_until="networkidle")
                 time.sleep(2)
-                html = self._page.content()
+                html = detail_page.content()
             
             soup = BeautifulSoup(html, "html.parser")
             full_text = soup.get_text()
@@ -518,6 +572,13 @@ class GGZYFetcherPlaywright:
                                     break
         except Exception:
             pass
+        finally:
+            # 关闭详情页，释放资源
+            if detail_page:
+                try:
+                    detail_page.close()
+                except:
+                    pass
     
     def _extract_subject_info(self, tender: TenderInfo, soup, full_text: str):
         """提取标的物信息."""
@@ -651,34 +712,28 @@ class GGZYFetcherPlaywright:
             total = self.get_total_results(html)
             print(f"  共找到 {total} 条记录")
             
+            # 第一步：先获取所有列表页的基本信息（不获取详情页）
+            all_list_results = []
+            
             # 解析第一页
             results = self.parse_list_page(html)
-            
             for result in results:
                 if result.url not in self._seen_urls:
                     self._seen_urls.add(result.url)
                     result.keyword = keyword
-                    
-                    # 获取详情页信息
-                    print(f"    获取详情: {result.title[:30]}...")
-                    self._fetch_detail_info(result)
-                    
-                    all_results.append(result)
-                    
-                    if not fetch_all and len(all_results) >= max_results:
-                        break
+                    all_list_results.append(result)
             
-            print(f"  第1页找到 {len(results)} 条，累计 {len(all_results)} 条")
+            print(f"  第1页找到 {len(results)} 条列表信息")
             
             # 如果需要获取更多页
-            if fetch_all or len(all_results) < max_results:
+            if fetch_all or len(all_list_results) < max_results:
                 current_page = 1
                 while True:
-                    if not fetch_all and len(all_results) >= max_results:
+                    if not fetch_all and len(all_list_results) >= max_results:
                         break
                     
                     current_page += 1
-                    print(f"  获取第 {current_page} 页...")
+                    print(f"  获取第 {current_page} 页列表...")
                     
                     next_html = self._get_next_page(current_page)
                     if not next_html:
@@ -694,23 +749,26 @@ class GGZYFetcherPlaywright:
                         if result.url not in self._seen_urls:
                             self._seen_urls.add(result.url)
                             result.keyword = keyword
-                            
-                            # 获取详情页信息
-                            print(f"    获取详情: {result.title[:30]}...")
-                            self._fetch_detail_info(result)
-                            
-                            all_results.append(result)
-                            
-                            if not fetch_all and len(all_results) >= max_results:
-                                break
+                            all_list_results.append(result)
                     
-                    print(f"  第{current_page}页找到 {len(results)} 条，累计 {len(all_results)} 条")
+                    print(f"  第{current_page}页找到 {len(results)} 条列表信息")
                     
                     # 检查是否还有下一页
                     if len(results) < 20:  # 每页通常20条
                         break
                     
                     time.sleep(1.5)
+            
+            print(f"  总共获取 {len(all_list_results)} 条列表信息")
+            
+            # 第二步：统一获取详情页信息
+            for i, result in enumerate(all_list_results):
+                if not fetch_all and len(all_results) >= max_results:
+                    break
+                
+                print(f"    获取详情 [{i+1}/{len(all_list_results)}]: {result.title[:30]}...")
+                self._fetch_detail_info(result)
+                all_results.append(result)
         
         except Exception as e:
             print(f"  搜索失败: {e}")
